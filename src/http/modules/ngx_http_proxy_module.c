@@ -4295,6 +4295,8 @@ ngx_http_proxy_set_ssl(ngx_conf_t *cf, ngx_http_proxy_loc_conf_t *plcf)
             return NGX_ERROR;
         }
 
+        ngx_ssl_set_verify_on(cf, plcf->upstream.ssl);
+
         if (ngx_ssl_trusted_certificate(cf, plcf->upstream.ssl,
                                         &plcf->ssl_trusted_certificate,
                                         plcf->ssl_verify_depth)
