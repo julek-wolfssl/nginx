@@ -12,6 +12,10 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 
+#ifdef WOLFSSL_NGINX
+#include <wolfssl/options.h>
+#include <openssl/pem.h>
+#endif
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/bn.h>
@@ -59,7 +63,7 @@
 #define ngx_ssl_conn_t          SSL
 
 
-#if (OPENSSL_VERSION_NUMBER < 0x10002000L)
+#if (OPENSSL_VERSION_NUMBER < 0x10002000L) && !defined(WOLFSSL_NGINX)
 #define SSL_is_server(s)        (s)->server
 #endif
 
@@ -171,6 +175,7 @@ ngx_int_t ngx_ssl_connection_certificate(ngx_connection_t *c, ngx_pool_t *pool,
 
 ngx_int_t ngx_ssl_ciphers(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *ciphers,
     ngx_uint_t prefer_server_ciphers);
+ngx_int_t ngx_ssl_set_verify_on(ngx_conf_t *cf, ngx_ssl_t *ssl);
 ngx_int_t ngx_ssl_client_certificate(ngx_conf_t *cf, ngx_ssl_t *ssl,
     ngx_str_t *cert, ngx_int_t depth);
 ngx_int_t ngx_ssl_trusted_certificate(ngx_conf_t *cf, ngx_ssl_t *ssl,
