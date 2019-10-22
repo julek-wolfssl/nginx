@@ -770,8 +770,10 @@ ngx_http_ssl_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
         return NGX_CONF_ERROR;
     }
 
+#ifndef WOLFSSL_NGINX
     ngx_conf_merge_value(conf->builtin_session_cache,
                          prev->builtin_session_cache, NGX_SSL_NONE_SCACHE);
+#endif
 
     if (conf->shm_zone == NULL) {
         conf->shm_zone = prev->shm_zone;
