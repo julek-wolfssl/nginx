@@ -1504,10 +1504,32 @@ static int
 ngx_ssl_new_client_session(ngx_ssl_conn_t *ssl_conn, ngx_ssl_session_t *sess)
 {
     ngx_connection_t  *c;
+#ifdef WOLFSSL_NGINX
+    int len;
+    unsigned char buf[NGX_SSL_MAX_SESSION_SIZE];
+#endif
 
     c = ngx_ssl_get_connection(ssl_conn);
 
     if (c->ssl->save_session) {
+#ifdef WOLFSSL_NGINX
+        len = i2d_SSL_SESSION(sess, NULL);
+
+        /* do not cache too big session */
+        if (len > NGX_SSL_MAX_SESSION_SIZE) {
+            return -1;
+        }
+
+        len = i2d_SSL_SESSION(sess, (unsigned char**) &buf);
+        if (len <= 0) {
+        	return -1;
+        }
+        sess = d2i_SSL_SESSION(NULL, (const unsigned char**) &buf, len);
+        if (!sess) {
+        	return -1;
+        }
+#endif
+
         c->ssl->session = sess;
 
         c->ssl->save_session(c);
