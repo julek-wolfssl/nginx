@@ -10,7 +10,11 @@
 #include <ngx_mail.h>
 
 
+#ifndef WOLFSSL_NGINX
 #define NGX_DEFAULT_CIPHERS     "HIGH:!aNULL:!MD5"
+#else
+#define NGX_DEFAULT_CIPHERS     "ALL"
+#endif
 #define NGX_DEFAULT_ECDH_CURVE  "auto"
 
 

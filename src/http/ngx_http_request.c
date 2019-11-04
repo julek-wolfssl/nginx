@@ -851,6 +851,12 @@ ngx_http_ssl_handshake_handler(ngx_connection_t *c)
 
 
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
+#ifndef SSL_AD_NO_RENEGOTIATION
+#define SSL_AD_NO_RENEGOTIATION     100
+#endif
+#ifndef SSL_AD_INTERNAL_ERROR
+#define SSL_AD_INTERNAL_ERROR       80
+#endif
 
 int
 ngx_http_ssl_servername(ngx_ssl_conn_t *ssl_conn, int *ad, void *arg)

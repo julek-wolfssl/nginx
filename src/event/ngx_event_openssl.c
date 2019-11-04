@@ -383,6 +383,10 @@ ngx_ssl_create(ngx_ssl_t *ssl, ngx_uint_t protocols, void *data)
 
     SSL_CTX_set_info_callback(ssl->ctx, ngx_ssl_info_callback);
 
+#ifdef WOLFSSL_NGINX
+    SSL_CTX_set_verify(ssl->ctx, SSL_VERIFY_NONE, NULL);
+#endif
+
     return NGX_OK;
 }
 
@@ -860,6 +864,14 @@ ngx_ssl_ciphers(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *ciphers,
     return NGX_OK;
 }
 
+
+ngx_int_t
+ngx_ssl_set_verify_on(ngx_conf_t *cf, ngx_ssl_t *ssl)
+{
+    SSL_CTX_set_verify(ssl->ctx, SSL_VERIFY_PEER, ngx_ssl_verify_callback);
+
+    return NGX_OK;
+}
 
 ngx_int_t
 ngx_ssl_client_certificate(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *cert,
@@ -1361,7 +1373,8 @@ ngx_ssl_ecdh_curve(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *name)
      * maximum interoperability.
      */
 
-#if (defined SSL_CTX_set1_curves_list || defined SSL_CTRL_SET_CURVES_LIST)
+#if (defined SSL_CTX_set1_curves_list || defined SSL_CTRL_SET_CURVES_LIST) || \
+    defined(WOLFSSL_NGINX)
 
     /*
      * OpenSSL 1.0.2+ allows configuring a curve list instead of a single
@@ -1481,10 +1494,32 @@ static int
 ngx_ssl_new_client_session(ngx_ssl_conn_t *ssl_conn, ngx_ssl_session_t *sess)
 {
     ngx_connection_t  *c;
+#ifdef WOLFSSL_NGINX
+    int len;
+    unsigned char buf[NGX_SSL_MAX_SESSION_SIZE];
+#endif
 
     c = ngx_ssl_get_connection(ssl_conn);
 
     if (c->ssl->save_session) {
+#ifdef WOLFSSL_NGINX
+        len = i2d_SSL_SESSION(sess, NULL);
+
+        /* do not cache too big session */
+        if (len > NGX_SSL_MAX_SESSION_SIZE) {
+            return -1;
+        }
+
+        len = i2d_SSL_SESSION(sess, (unsigned char**) &buf);
+        if (len <= 0) {
+            return -1;
+        }
+        sess = d2i_SSL_SESSION(NULL, (const unsigned char**) &buf, len);
+        if (!sess) {
+            return -1;
+        }
+#endif
+
         c->ssl->session = sess;
 
         c->ssl->save_session(c);
@@ -1556,7 +1591,9 @@ ngx_ssl_get_session(ngx_connection_t *c)
 {
 #ifdef TLS1_3_VERSION
     if (c->ssl->session) {
+    #if !defined(WOLFSSL_NGINX)
         SSL_SESSION_up_ref(c->ssl->session);
+    #endif
         return c->ssl->session;
     }
 #endif
@@ -3972,7 +4009,8 @@ ngx_ssl_session_ticket_key_callback(ngx_ssl_conn_t *ssl_conn,
             return -1;
         }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10000000L
+#if OPENSSL_VERSION_NUMBER >= 0x10000000L && \
+    (!defined(WOLFSSL_NGINX) || !defined(HAVE_FIPS))
         if (HMAC_Init_ex(hctx, key[0].hmac_key, size, digest, NULL) != 1) {
             ngx_ssl_error(NGX_LOG_ALERT, c->log, 0, "HMAC_Init_ex() failed");
             return -1;
@@ -4016,7 +4054,8 @@ ngx_ssl_session_ticket_key_callback(ngx_ssl_conn_t *ssl_conn,
             size = 32;
         }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10000000L
+#if OPENSSL_VERSION_NUMBER >= 0x10000000L && \
+    (!defined(WOLFSSL_NGINX) || !defined(HAVE_FIPS))
         if (HMAC_Init_ex(hctx, key[i].hmac_key, size, digest, NULL) != 1) {
             ngx_ssl_error(NGX_LOG_ALERT, c->log, 0, "HMAC_Init_ex() failed");
             return -1;
