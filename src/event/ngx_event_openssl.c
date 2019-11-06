@@ -1496,7 +1496,6 @@ ngx_ssl_new_client_session(ngx_ssl_conn_t *ssl_conn, ngx_ssl_session_t *sess)
     ngx_connection_t  *c;
 #ifdef WOLFSSL_NGINX
     int len;
-    unsigned char buf[NGX_SSL_MAX_SESSION_SIZE];
 #endif
 
     c = ngx_ssl_get_connection(ssl_conn);
@@ -1510,12 +1509,7 @@ ngx_ssl_new_client_session(ngx_ssl_conn_t *ssl_conn, ngx_ssl_session_t *sess)
             return -1;
         }
 
-        len = i2d_SSL_SESSION(sess, (unsigned char**) &buf);
-        if (len <= 0) {
-            return -1;
-        }
-        sess = d2i_SSL_SESSION(NULL, (const unsigned char**) &buf, len);
-        if (!sess) {
+        if (!(sess = SSL_SESSION_dup(sess))) {
             return -1;
         }
 #endif
