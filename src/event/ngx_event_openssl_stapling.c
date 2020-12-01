@@ -281,7 +281,15 @@ ngx_ssl_stapling_issuer(ngx_conf_t *cf, ngx_ssl_t *ssl)
     for (i = 0; i < n; i++) {
         issuer = sk_X509_value(chain, i);
         if (X509_check_issued(issuer, cert) == X509_V_OK) {
+#ifndef WOLFSSL_NGINX
             CRYPTO_add(&issuer->references, 1, CRYPTO_LOCK_X509);
+#else
+            if (wolfSSL_X509_up_ref(issuer) != 1) {
+                ngx_ssl_error(NGX_LOG_EMERG, ssl->log, 0,
+                              "wolfSSL_X509_up_ref() failed");
+                return NGX_ERROR;
+            }
+#endif
 
             ngx_log_debug1(NGX_LOG_DEBUG_EVENT, ssl->log, 0,
                            "SSL get issuer: found %p in extra certs", issuer);

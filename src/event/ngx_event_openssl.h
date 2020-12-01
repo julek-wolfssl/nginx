@@ -12,6 +12,9 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 
+#ifdef WOLFSSL_NGINX
+#include <wolfssl/options.h>
+#endif
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/bn.h>

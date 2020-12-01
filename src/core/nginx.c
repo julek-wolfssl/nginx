@@ -206,6 +206,11 @@ main(int argc, char *const *argv)
     ngx_cycle_t      *cycle, init_cycle;
     ngx_core_conf_t  *ccf;
 
+
+#ifdef WOLFSSL_NGINX
+    (void)wolfSSL_Debugging_ON();
+#endif
+
     ngx_debug_init();
 
     if (ngx_strerror_init() != NGX_OK) {

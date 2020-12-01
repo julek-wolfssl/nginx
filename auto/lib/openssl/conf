@@ -49,11 +49,38 @@ else
         ngx_feature="OpenSSL library"
         ngx_feature_name="NGX_OPENSSL"
         ngx_feature_run=no
-        ngx_feature_incs="#include <openssl/ssl.h>"
+        ngx_feature_incs="#include <options.h>
+                          #include <openssl/ssl.h>"
         ngx_feature_path=
         ngx_feature_libs="-lssl -lcrypto"
         ngx_feature_test="SSL_library_init()"
+        
+        if [ $WOLFSSL != NONE ]; then
+            ngx_feature="wolfSSL library in $WOLFSSL"
+            ngx_feature_path="$WOLFSSL/include/wolfssl $WOLFSSL/include"
+
+            if [ $NGX_RPATH = YES ]; then
+                ngx_feature_libs="-R$WOLFSSL/lib -L$WOLFSSL/lib -lwolfssl -lm $NGX_LIBDL"
+            else
+                ngx_feature_libs="-L$WOLFSSL/lib -lwolfssl -lm $NGX_LIBDL"
+            fi
+
+            CORE_INCS="$CORE_INCS $ngx_feature_path"
+            CFLAGS="$CFLAGS -DWOLFSSL_NGINX"
+        fi
+        
         . auto/feature
+        
+        if [ $WOLFSSL != NONE -a $ngx_found = no ]; then
+cat << END
+
+$0: error: Could not find wolfSSL at $WOLFSSL/include/wolfssl.
+SSL modules require the wolfSSL library.
+
+END
+            exit 1
+        fi
+        
 
         if [ $ngx_found = yes ]; then
             have=NGX_SSL . auto/have
@@ -66,10 +93,8 @@ else
 
 cat << END
 
-$0: error: SSL modules require the OpenSSL library.
-You can either do not enable the modules, or install the OpenSSL library
-into the system, or build the OpenSSL library statically from the source
-with nginx by using --with-openssl=<path> option.
+$0: error: Could not find wolfSSL at $WOLFSSL/include/wolfssl.
+SSL modules require the wolfSSL library.
 
 END
         exit 1

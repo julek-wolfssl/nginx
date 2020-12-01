@@ -204,6 +204,11 @@ ngx_ssl_create(ngx_ssl_t *ssl, ngx_uint_t protocols, void *data)
         return NGX_ERROR;
     }
 
+#ifdef WOLFSSL_NGINX
+    /* nginx expects that the SSL library doesn't verify certs by default */
+    SSL_CTX_set_verify(ssl->ctx, WOLFSSL_VERIFY_NONE, NULL);
+#endif
+
     ssl->buffer_size = NGX_SSL_BUFSIZE;
 
     /* client side options */
@@ -1096,10 +1101,13 @@ ngx_ssl_handshake(ngx_connection_t *c)
         c->recv_chain = ngx_ssl_recv_chain;
         c->send_chain = ngx_ssl_send_chain;
 
+        /* wolfSSL has renegotiation disabled by default */
+#ifndef WOLFSSL_NGINX
         /* initial handshake done, disable renegotiation (CVE-2009-3555) */
         if (c->ssl->connection->s3) {
             c->ssl->connection->s3->flags |= SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS;
         }
+#endif
 
         return NGX_OK;
     }
@@ -1844,7 +1852,9 @@ ngx_ssl_connection_error(ngx_connection_t *c, int sslerr, ngx_err_t err,
             || n == SSL_R_ERROR_IN_RECEIVED_CIPHER_LIST              /*  151 */
             || n == SSL_R_EXCESSIVE_MESSAGE_SIZE                     /*  152 */
             || n == SSL_R_LENGTH_MISMATCH                            /*  159 */
+#ifndef WOLFSSL_NGINX
             || n == SSL_R_NO_CIPHERS_PASSED                          /*  182 */
+#endif
             || n == SSL_R_NO_CIPHERS_SPECIFIED                       /*  183 */
             || n == SSL_R_NO_COMPRESSION_SPECIFIED                   /*  187 */
             || n == SSL_R_NO_SHARED_CIPHER                           /*  193 */
@@ -1869,6 +1879,7 @@ ngx_ssl_connection_error(ngx_connection_t *c, int sslerr, ngx_err_t err,
 #ifdef SSL_R_SCSV_RECEIVED_WHEN_RENEGOTIATING
             || n == SSL_R_SCSV_RECEIVED_WHEN_RENEGOTIATING           /*  345 */
 #endif
+#ifndef WOLFSSL_NGINX
             || n == 1000 /* SSL_R_SSLV3_ALERT_CLOSE_NOTIFY */
             || n == SSL_R_SSLV3_ALERT_UNEXPECTED_MESSAGE             /* 1010 */
             || n == SSL_R_SSLV3_ALERT_BAD_RECORD_MAC                 /* 1020 */
@@ -1892,7 +1903,9 @@ ngx_ssl_connection_error(ngx_connection_t *c, int sslerr, ngx_err_t err,
             || n == SSL_R_TLSV1_ALERT_INSUFFICIENT_SECURITY          /* 1071 */
             || n == SSL_R_TLSV1_ALERT_INTERNAL_ERROR                 /* 1080 */
             || n == SSL_R_TLSV1_ALERT_USER_CANCELLED                 /* 1090 */
-            || n == SSL_R_TLSV1_ALERT_NO_RENEGOTIATION)              /* 1100 */
+            || n == SSL_R_TLSV1_ALERT_NO_RENEGOTIATION              /* 1100 */
+#endif
+            )
         {
             switch (c->log_error) {
 
@@ -2798,7 +2811,7 @@ ngx_ssl_session_ticket_key_callback(ngx_ssl_conn_t *ssl_conn,
                      ngx_ssl_session_ticket_md(), NULL);
         ngx_memcpy(name, key[0].name, 16);
 
-        return 0;
+        return 1;
 
     } else {
         /* decrypt session ticket */
