@@ -14,7 +14,11 @@ typedef ngx_int_t (*ngx_ssl_variable_handler_pt)(ngx_connection_t *c,
     ngx_pool_t *pool, ngx_str_t *s);
 
 
+#ifndef WOLFSSL_NGINX
 #define NGX_DEFAULT_CIPHERS     "HIGH:!aNULL:!MD5"
+#else
+#define NGX_DEFAULT_CIPHERS     "ALL"
+#endif
 #define NGX_DEFAULT_ECDH_CURVE  "auto"
 
 #define NGX_HTTP_NPN_ADVERTISE  "\x08http/1.1"
@@ -892,8 +896,10 @@ ngx_http_ssl_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
         return NGX_CONF_ERROR;
     }
 
+#ifndef WOLFSSL_NGINX
     ngx_conf_merge_value(conf->builtin_session_cache,
                          prev->builtin_session_cache, NGX_SSL_NONE_SCACHE);
+#endif
 
     if (conf->shm_zone == NULL) {
         conf->shm_zone = prev->shm_zone;

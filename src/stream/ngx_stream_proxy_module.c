@@ -2164,7 +2164,9 @@ ngx_stream_proxy_set_ssl(ngx_conf_t *cf, ngx_stream_proxy_srv_conf_t *pscf)
                       "no proxy_ssl_trusted_certificate for proxy_ssl_verify");
             return NGX_ERROR;
         }
-
+#ifdef WOLFSSL_NGINX
+        ngx_ssl_set_verify_on(cf, pscf->ssl);
+#endif
         if (ngx_ssl_trusted_certificate(cf, pscf->ssl,
                                         &pscf->ssl_trusted_certificate,
                                         pscf->ssl_verify_depth)

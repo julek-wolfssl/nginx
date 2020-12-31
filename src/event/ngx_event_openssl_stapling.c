@@ -379,7 +379,9 @@ ngx_ssl_stapling_issuer(ngx_conf_t *cf, ngx_ssl_t *ssl,
     for (i = 0; i < n; i++) {
         issuer = sk_X509_value(staple->chain, i);
         if (X509_check_issued(issuer, cert) == X509_V_OK) {
-#if OPENSSL_VERSION_NUMBER >= 0x10100001L
+#ifdef WOLFSSL_NGINX
+            issuer = X509_dup(issuer);
+#elif OPENSSL_VERSION_NUMBER >= 0x10100001L
             X509_up_ref(issuer);
 #else
             CRYPTO_add(&issuer->references, 1, CRYPTO_LOCK_X509);
