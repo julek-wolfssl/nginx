@@ -15,6 +15,7 @@
 #ifdef WOLFSSL_NGINX
 #include <wolfssl/options.h>
 #include <openssl/pem.h>
+#include <wolfssl/wolfcrypt/wc_pkcs11.h>
 #endif
 #include <openssl/ssl.h>
 #include <openssl/err.h>

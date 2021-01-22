@@ -709,6 +709,9 @@ ngx_ssl_load_certificate(ngx_pool_t *pool, char **err, ngx_str_t *cert,
     return x509;
 }
 
+static int pkcs11 = 0;
+static Pkcs11Dev dev;
+static Pkcs11Token token;
 
 static EVP_PKEY *
 ngx_ssl_load_certificate_key(ngx_pool_t *pool, char **err,
@@ -765,6 +768,130 @@ ngx_ssl_load_certificate_key(ngx_pool_t *pool, char **err,
 
 #endif
     }
+#if defined(WOLFSSL_NGINX)
+    else if (ngx_strncmp(key->data, "pkcs11:", sizeof("pkcs11:") - 1) == 0) {
+        u_char* library = NULL;
+        u_char* slot = NULL;
+        int slotId;
+        u_char* label = NULL;
+        u_char* userPin = NULL;
+        u_char* keySz = NULL;
+        int _keySz;
+        u_char* keyId = NULL;
+        u_char* keyIdBin = NULL;
+        int keyIdSz;
+        u_char  *keyCpy = ngx_pstrdup(pool, key);
+        u_char  *p = keyCpy;
+        int ret;
+        int devId = 1;
+
+        if (keyCpy == NULL){
+            *err = "ngx_pstrdup() failed";
+            return NULL;
+        }
+
+        while (*p) {
+            if (ngx_strncmp(p, "library=", sizeof("library=") - 1) == 0)
+                library = p + sizeof("library=") - 1;
+            else if (ngx_strncmp(p, "slot=", sizeof("slot=") - 1) == 0)
+                slot = p + sizeof("slot=") - 1;
+            else if (ngx_strncmp(p, "label=", sizeof("label=") - 1) == 0)
+                label = p + sizeof("label=") - 1;
+            else if (ngx_strncmp(p, "pin=", sizeof("pin=") - 1) == 0)
+                userPin = p + sizeof("pin=") - 1;
+            else if (ngx_strncmp(p, "keyId=", sizeof("keyId=") - 1) == 0)
+                keyId = p + sizeof("keyId=") - 1;
+            else if (ngx_strncmp(p, "keySz=", sizeof("keySz=") - 1) == 0)
+                keySz = p + sizeof("keySz=") - 1;
+            while (*p && *p != ':')
+                p++;
+            if (*p)
+                *p++ = '\0';
+        }
+
+        if (library == NULL || slot == NULL || label == NULL ||
+                userPin == NULL || keyId == NULL) {
+            *err = "One or more parameters not provided. "
+                    "PKCS11 needs library, token, slot, pin, keyId";
+            (void)ngx_pfree(pool, keyCpy);
+            return NULL;
+        }
+
+        keyIdSz = strlen((char*)keyId);
+        if (keyIdSz == 0 || keyIdSz % 2) {
+            *err = "keyId is a hex number and its length needs to be even";
+            (void)ngx_pfree(pool, keyCpy);
+            return NULL;
+        }
+
+        p = keyIdBin = (u_char*)malloc(keyIdSz / 2);
+        if (keyIdBin == NULL) {
+            *err = "malloc failed";
+            (void)ngx_pfree(pool, keyCpy);
+            return NULL;
+        }
+        while (*keyId) {
+            u_char c = tolower(*keyId++);
+            if (c >= '0' && c <= '9') {
+                *p = (c - '0') << 4;
+            }
+            else if (c >= 'a' && c <= 'f') {
+                *p = (c - 'a' + 10) << 4;
+            }
+            else {
+                *err = "Invalid keyId";
+                (void)ngx_pfree(pool, keyCpy);
+                free(keyIdBin);
+                return NULL;
+            }
+            c = tolower(*keyId++);
+            if (c >= '0' && c <= '9') {
+                *p |= c - '0';
+            }
+            else if (c >= 'a' && c <= 'f') {
+                *p |= c - 'a' + 10;
+            }
+            else {
+                *err = "Invalid keyId";
+                (void)ngx_pfree(pool, keyCpy);
+                free(keyIdBin);
+                return NULL;
+            }
+            p++;
+        }
+
+        _keySz = atoi((char*)keySz);
+        slotId = atoi((char*)slot);
+        ret = wc_Pkcs11_Initialize(&dev, (char*)library, NULL);
+        if (ret == 0)
+            ret = wc_Pkcs11Token_Init(&token, &dev, slotId, (char*)label,
+                                      userPin, strlen((char*)userPin));
+        if (ret == 0)
+            ret = wc_CryptoDev_RegisterDevice(devId, wc_Pkcs11_CryptoDevCb,
+                                              &token);
+
+        (void)ngx_pfree(pool, keyCpy);
+        if (ret != 0) {
+            *err = "PKCS11 initialization failed";
+            free(keyIdBin);
+            return NULL;
+        }
+
+        pkey = EVP_PKEY_new();
+        if (pkey == NULL) {
+            *err = "EVP_PKEY_new failed";
+            free(keyIdBin);
+            return NULL;
+        }
+        pkey->devId = devId;
+        pkey->keySz = _keySz;
+        pkey->keyId = keyIdBin;
+        pkey->keyIdSz = keyIdSz / 2;
+        pkcs11 = 1;
+
+        return pkey;
+    }
+#endif
 
     if (ngx_strncmp(key->data, "data:", sizeof("data:") - 1) == 0) {
 
@@ -1634,6 +1761,11 @@ ngx_ssl_create_connection(ngx_ssl_t *ssl, ngx_connection_t *c, ngx_uint_t flags)
         sc->try_early_data = 1;
     }
 #endif
+
+    if (pkcs11 && wc_Pkcs11Token_Open(&token, 1) != 0) {
+        ngx_ssl_error(NGX_LOG_ALERT, c->log, 0, "wc_Pkcs11Token_Open() failed");
+        return NGX_ERROR;
+    }
 
     sc->connection = SSL_new(ssl->ctx);
 
@@ -2908,6 +3040,9 @@ ngx_ssl_shutdown(ngx_connection_t *c)
     ngx_uint_t  tries;
 
     ngx_ssl_ocsp_cleanup(c);
+
+    if (pkcs11)
+        wc_Pkcs11Token_Close(&token);
 
     if (SSL_in_init(c->ssl->connection)) {
         /*
